@@ -4,18 +4,22 @@
 
 #inbuilt import
 import uvicorn
-from typing import List
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
-from contextlib import asynccontextmanager
+from datetime import timedelta
+from typing import List, Annotated
 from sqlalchemy.future import select
-from fastapi import FastAPI, APIRouter, Depends, status, HTTPException
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import FastAPI, APIRouter, Depends, status, HTTPException
+
 
 #local import
 from database.database import db
 from models.models import Book, Review
-
+from helper.oauth_helper import (authenticate_user, create_access_token, fake_users_db,
+                                 User, get_current_active_user, Token, ACCESS_TOKEN_EXPIRE_MINUTES)
 router = APIRouter(prefix="/api/v1", tags=["Books"])
 
 
@@ -44,9 +48,29 @@ class Reviews(BaseModel):
     rating: int
 
 
+@app.post("/token")
+async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> Token:
+    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=int(ACCESS_TOKEN_EXPIRE_MINUTES))
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return Token(access_token=access_token, token_type="bearer")
+
+
 @router.post("/book")
-async def add_book(book: Books, session: AsyncSession = Depends(db.get_session)):
+async def add_book(book: Books,
+                   current_user: Annotated[User, Depends(get_current_active_user)],
+                   session: AsyncSession = Depends(db.get_session),
+                   ):
     """
+    :param current_user: authenticate user for allowing to use api  \n
     :param book: object which hold information of the book details \n
     :param session: session to perform database operation \n
     :return: book details in json format on success
@@ -68,8 +92,10 @@ async def add_book(book: Books, session: AsyncSession = Depends(db.get_session))
 
 
 @router.get("/books", response_model=List[Books])
-async def get_all_books(session: AsyncSession = Depends(db.get_session)):
+async def get_all_books(current_user: Annotated[User, Depends(get_current_active_user)],
+        session: AsyncSession = Depends(db.get_session)):
     """
+    :param current_user: authenticate user for allowing to use api  \n
     :param session: session to perform database operation \n
     :return: retrieve all books stored in database
     """
@@ -82,8 +108,11 @@ async def get_all_books(session: AsyncSession = Depends(db.get_session)):
 
 
 @router.get("/books/{book_id}", response_model=List[Books])
-async def get_book(book_id: int, session: AsyncSession = Depends(db.get_session)):
+async def get_book(book_id: int,
+                   current_user: Annotated[User, Depends(get_current_active_user)],
+                   session: AsyncSession = Depends(db.get_session)):
     """
+    :param current_user: authenticate user for allowing to use api  \n
     :param book_id: book id to retrieve its details \n
     :param session: session to perform database operation \n
     :return: book details
@@ -100,10 +129,13 @@ async def get_book(book_id: int, session: AsyncSession = Depends(db.get_session)
 
 
 @router.put("/books/{book_id}", response_model=Books)
-async def update_book(book_id: int, book_update: Books, session: AsyncSession = Depends(db.get_session)):
+async def update_book(book_id: int, book_update: Books,
+                      current_user: Annotated[User, Depends(get_current_active_user)],
+                      session: AsyncSession = Depends(db.get_session)):
     """
     :param book_id: book id to update it details \n
     :param book_update: book object to update its details \n
+    :param current_user: authenticate user for allowing to use api  \n
     :param session: session to perform database operation \n
     :return: details of book which has been updated successfully
     """
@@ -127,9 +159,12 @@ async def update_book(book_id: int, book_update: Books, session: AsyncSession = 
 
 
 @router.delete("/books/{book_id}", response_model=dict)
-async def delete_book(book_id: int, session: AsyncSession = Depends(db.get_session)):
+async def delete_book(book_id: int,
+                      current_user: Annotated[User, Depends(get_current_active_user)],
+                      session: AsyncSession = Depends(db.get_session)):
     """
     :param book_id: book id to delete from database \n
+    :param current_user: authenticate user for allowing to use api  \n
     :param session: session to perform database operation \n
     :return: message if book get successfully deleted
     """
@@ -147,10 +182,13 @@ async def delete_book(book_id: int, session: AsyncSession = Depends(db.get_sessi
 
 
 @router.post("/books/{book_id}/reviews/", response_model=Reviews)
-async def add_review(book_id: int, review: Reviews, session: AsyncSession = Depends(db.get_session)):
+async def add_review(book_id: int, review: Reviews,
+                     current_user: Annotated[User, Depends(get_current_active_user)],
+                     session: AsyncSession = Depends(db.get_session)):
     """
     :param book_id: book id to update the review in the database \n
     :param review: review of the book \n
+    :param current_user: authenticate user for allowing to use api  \n
     :param session: session to update review in database \n
     :return: review details of book
     """
@@ -177,9 +215,12 @@ async def add_review(book_id: int, review: Reviews, session: AsyncSession = Depe
 
 
 @router.get("/books/{book_id}/reviews/", response_model=List[Reviews])
-async def get_reviews(book_id: int, session: AsyncSession = Depends(db.get_session)):
+async def get_reviews(book_id: int,
+                      current_user: Annotated[User, Depends(get_current_active_user)],
+                      session: AsyncSession = Depends(db.get_session)):
     """
     :param book_id: book id to retrieve the review \n
+    :param current_user: authenticate user for allowing to use api  \n
     :param session: session to update review in database \n
     :return: review of the specific book
     """
