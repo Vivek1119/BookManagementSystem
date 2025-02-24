@@ -51,6 +51,14 @@ DB_PASS=""
 DB_HOST=""
 DB_PORT=""
 DB_NAME=""
+SECRET_KEY = ""
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+USERNAME = ""
+FULL_NAME = ""
+EMAIL = ""
+HASHED_PASSWORD = ""
+DISABLE = False/True
 ```
 
 Create Table in Postgrese Database
